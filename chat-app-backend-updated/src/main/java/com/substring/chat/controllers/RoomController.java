@@ -3,6 +3,8 @@ package com.substring.chat.controllers;
 import com.substring.chat.entities.Message;
 import com.substring.chat.entities.Room;
 import com.substring.chat.repositories.RoomRepository;
+import com.substring.chat.services.RoomService;
+
 import lombok.Getter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -16,6 +18,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 @RestController
@@ -24,124 +27,87 @@ import java.util.stream.Collectors;
 public class RoomController {
 	
 	private final SimpMessagingTemplate simpMessagingTemplate;
+    private final RoomService roomService;
 
-    private RoomRepository roomRepository;
-
-
-    public RoomController(RoomRepository roomRepository,SimpMessagingTemplate simpMessagingTemplate) {
-    	this.simpMessagingTemplate = simpMessagingTemplate;
-        this.roomRepository = roomRepository;
+    public RoomController(RoomService roomService, SimpMessagingTemplate simpMessagingTemplate) {
+        this.simpMessagingTemplate = simpMessagingTemplate;
+        this.roomService = roomService;
     }
 
-    /// Create Room (Now with Topic + Admin)
+    // Create Room (Now with Topic + Admin)
     @PostMapping
     public ResponseEntity<?> createRoom(@RequestBody Map<String, String> request) {
-        String roomId = request.get("roomId");
-        String adminUser = request.get("adminUser").replaceAll("^\"|\"$",""); // Clean admin name
+        String roomId = UUID.randomUUID().toString();
         
-        if (roomRepository.findByRoomId(roomId) != null) {
+        String adminUser = request.get("adminUser").replaceAll("^\"|\"$","");
+        
+        if (roomService.findByRoomId(roomId) != null) {
             return ResponseEntity.badRequest().body("Room exists!");
         }
 
-        Room room = new Room();
-        room.setRoomId(roomId);
-        room.setRoomTopic(request.get("roomTopic"));
-        room.setAdminUser(adminUser);
-        room.setConnectedUsers(new ArrayList<>(List.of(adminUser))); // Initialize with just admin
-        return ResponseEntity.ok(roomRepository.save(room));
+        Room room = roomService.createRoom(roomId, request.get("roomTopic"), adminUser);
+        return ResponseEntity.ok(room);
     }
+    
+ // Delete Room (Admin Only)
+    @DeleteMapping("/{roomId}")
+    public ResponseEntity<?> deleteRoom(@PathVariable String roomId, @RequestParam String requestedBy) {
+        Room room = roomService.findByRoomId(roomId);
+        if (room == null)
+            return ResponseEntity.notFound().build();
 
-    // Delete Room (Admin Only)
-	@DeleteMapping("/{roomId}")
-	public ResponseEntity<?> deleteRoom(@PathVariable String roomId, @RequestParam String requestedBy) {
-		Room room = roomRepository.findByRoomId(roomId);
-		if (room == null)
-			return ResponseEntity.notFound().build();
+        if (!room.getAdminUser().equals(requestedBy)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Only admin can delete this room!");
+        }
 
-		if (!room.getAdminUser().equals(requestedBy)) {
-			return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Only admin can delete this room!");
-		}
+        roomService.delete(room);
+        simpMessagingTemplate.convertAndSend("/topic/roomDeleted/" + roomId, "Room has been deleted by admin");
+        return ResponseEntity.ok("Room deleted!");
+    }
+    
+  //Delete Message(deletes from database)
+    @DeleteMapping("/{roomId}/messages/{messageId}")
+    public ResponseEntity<?> deleteMessage(@PathVariable String roomId, @PathVariable String messageId,
+            @RequestParam String requestedBy) {
+        Room room = roomService.findByRoomId(roomId);
+        if (room == null)
+            return ResponseEntity.notFound().build();
 
-		roomRepository.delete(room);
+        if (!room.getAdminUser().equals(requestedBy)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
 
-		// Broadcast room deletion
-		simpMessagingTemplate.convertAndSend("/topic/roomDeleted/" + roomId, "Room has been deleted by admin");
+        Optional<Message> messageToDelete = roomService.findMessageInRoom(roomId, messageId);
+        if (messageToDelete.isPresent()) {
+            Message msg = messageToDelete.get();
+            msg.setDeleted(true);
+            roomService.save(room);
+            simpMessagingTemplate.convertAndSend("/topic/room/" + roomId, msg);
+            return ResponseEntity.ok().build();
+        }
 
-		return ResponseEntity.ok("Room deleted!");
-	}
-
-	//Delete Message(deletes from database)
-	@DeleteMapping("/{roomId}/messages/{messageId}")
-	public ResponseEntity<?> deleteMessage(@PathVariable String roomId, @PathVariable String messageId,
-			@RequestParam String requestedBy) {
-		System.out.println("called");
-		Room room = roomRepository.findByRoomId(roomId);
-		if (room == null)
-			return ResponseEntity.notFound().build();
-
-		// Verify requester is admin
-		if (!room.getAdminUser().equals(requestedBy)) {
-			return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
-		}
-
-		// Find and remove the message
-		Optional<Message> messageToDelete = room.getMessages().stream().filter(m -> m.getId().equals(messageId))
-				.findFirst();
-
-
-		 if (messageToDelete.isPresent()) {
-		        Message msg = messageToDelete.get();
-		        msg.setDeleted(true);
-		        //msg.setContent("This message was deleted by an admin.");
-		        roomRepository.save(room);
-
-		        // Optional: Broadcast deleted message
-		        simpMessagingTemplate.convertAndSend("/topic/room/" + roomId, msg);
-
-		        return ResponseEntity.ok().build();
-		    }
-
-		return ResponseEntity.notFound().build();
-	}
-	
-	
-
-    //get room: join
+        return ResponseEntity.notFound().build();
+    }
+    
+  //get room: join
     @GetMapping("/{roomId}")
-    public ResponseEntity<?> joinRoom(
-            @PathVariable String roomId
-    ) {
-
-        Room room = roomRepository.findByRoomId(roomId);
+    public ResponseEntity<?> joinRoom(@PathVariable String roomId) {
+        Room room = roomService.findByRoomId(roomId);
         if (room == null) {
-            return ResponseEntity.badRequest()
-                    .body("Room not found!!");
+            return ResponseEntity.badRequest().body("Room not found!!");
         }
         return ResponseEntity.ok(room);
     }
-
-
-    //get messages of room
-
+    
+  //get messages of room
     @GetMapping("/{roomId}/messages")
     public ResponseEntity<List<Message>> getMessages(
             @PathVariable String roomId,
             @RequestParam(value = "page", defaultValue = "0", required = false) int page,
             @RequestParam(value = "size", defaultValue = "20", required = false) int size
     ) {
-        Room room = roomRepository.findByRoomId(roomId);
-        if (room == null) {
-            return ResponseEntity.badRequest().build()
-                    ;
-        }
-        //get messages :
-        //pagination
-        List<Message> messages = room.getMessages();
-        int start = Math.max(0, messages.size() - (page + 1) * size);
-        int end = Math.min(messages.size(), start + size);
-        List<Message> paginatedMessages = messages.subList(start, end);
-        return ResponseEntity.ok(paginatedMessages);
-
+        List<Message> messages = roomService.getMessagesPaginated(roomId, page, size);
+        return ResponseEntity.ok(messages);
     }
 
 
