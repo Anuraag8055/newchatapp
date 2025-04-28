@@ -7,7 +7,7 @@ import { useNavigate } from "react-router";
 
 const JoinCreateChat = () => {
   const [detail, setDetail] = useState({
-    roomId: "",
+    //roomId: "",
     userName: "",
     roomTopic: "",
   });
@@ -94,7 +94,7 @@ const JoinCreateChat = () => {
   
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
-            Room ID (Join or Create)
+            Room ID (Only to Join)
           </label>
           <input
             type="text"
