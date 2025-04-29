@@ -1,20 +1,22 @@
 import React, { useEffect, useRef, useState } from "react";
 import { MdSend } from "react-icons/md";
 import useChatContext from "../context/ChatContext";
-import { useNavigate } from "react-router";
+import { useNavigate, useParams } from "react-router";
 import SockJS from "sockjs-client";
 import { Stomp } from "@stomp/stompjs";
 import toast from "react-hot-toast";
 import { baseURL, httpClient } from "../config/AxiosHelper";
-import { getMessagess } from "../services/RoomService";
+import { getMessagess, getRoomApi } from "../services/RoomService";
 import { timeAgo } from "../config/helper";
+
+
 
 
 const ChatPage = () => {
   const {
-    roomId,
-    currentUser,
-    connected,
+    // roomId,
+     currentUser,
+     connected,
     setConnected,
     setRoomId,
     setCurrentUser,
@@ -31,12 +33,50 @@ const ChatPage = () => {
 
   const [onlineUsers, setOnlineUsers] = useState([]);
 
-  // Check connection and redirect if not connected
+  const {roomId}= useParams()
+  //const [loading, setLoading] = useState(true);
+  // to check roomid exists before joing through url
   useEffect(() => {
-    if (!connected) {
-      navigate("/");
+    const setup = async () => {
+      console.log("🔍 Checking room:", roomId);
+      try {
+        const data = await getRoomApi(roomId);
+        console.log("✅ Room fetched:", data);
+  
+        setRoomId(roomId);
+  
+        let user = sessionStorage.getItem("username");
+        console.log(user);
+        if (!user) {
+          user = prompt("Enter your username to join the chat:");
+          if (!user || user.trim() === "") {
+            console.log("after entering username"+user);
+            navigate("/");
+            return;
+          }
+          sessionStorage.setItem("username", user);
+        }
+  
+        setCurrentUser(user);
+        setConnected(true);
+        //setLoading(false);
+      } catch (err) {
+        console.error("❌ Failed to fetch room:", err?.response || err);
+        navigate("/404");
+      }
+    };
+  
+    if (roomId) {
+      setup();
     }
-  }, [connected, navigate]);
+  }, [roomId, navigate, setRoomId, setCurrentUser, setConnected]);
+
+  // Check connection and redirect if not connected
+  // useEffect(() => {
+  //   if (!connected && !loading) {
+  //     navigate("/");
+  //   }
+  // }, [connected, loading, navigate]);
 
   // Load messages and room data
   useEffect(() => {
@@ -181,6 +221,8 @@ const ChatPage = () => {
     setConnected(false);
     setRoomId("");
     setCurrentUser("");
+    navigate("/");
+    
    
   };
 
