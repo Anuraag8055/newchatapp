@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { MdSend } from "react-icons/md";
+import { ClipboardCopy } from 'lucide-react';
 import useChatContext from "../context/ChatContext";
 import { useNavigate, useParams } from "react-router";
 import SockJS from "sockjs-client";
@@ -225,27 +226,54 @@ const ChatPage = () => {
     
    
   };
+  const copyRoomLink = () => {
+    const url = `${window.location.origin}/chat/${roomId}`;
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(url)
+        .then(() => toast.success("Link copied!"))
+        .catch(() => toast.error("Failed to copy"));
+    } else {
+      // Fallback for browsers that don't support Clipboard API in non-HTTPS contexts
+      const textarea = document.createElement('textarea');
+      textarea.value = url;
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textarea);
+      toast.success("Link copied!");
+    }
+  };
 
   return (
-    <div className="min-h-screen bg-gray-100 flex items-center justify-center py-8 px-4">
+    <div className="min-h-screen bg-gray-300 flex items-center justify-center py-8 px-4">
       <div className="w-full max-w-5xl bg-white shadow-md rounded-xl overflow-hidden flex flex-col">
-
         {/* Header */}
         <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 px-6 py-4 border-b border-gray-200 bg-white">
           <div className="space-y-1">
             <h1 className="text-lg font-semibold text-gray-800">
               Room: <span className="text-blue-600">{roomId}</span>
+              <span className="ml-2">
+                <button onClick={copyRoomLink} title="Copy room link">
+                  <ClipboardCopy className="w-5 h-5 text-blue-500 hover:text-blue-700" />
+                </button>
+              </span>
             </h1>
             <p className="text-sm text-gray-600">
-              Topic: <span className="text-blue-500">{room?.roomTopic || "General"}</span>
+              Topic:{" "}
+              <span className="text-blue-500">
+                {room?.roomTopic || "General"}
+              </span>
             </p>
           </div>
           <div className="flex items-center gap-3 flex-wrap">
             <h2 className="text-sm text-gray-700 font-medium">
-              User: <span className="text-green-600 font-semibold">
+              User:{" "}
+              <span className="text-green-600 font-semibold">
                 {currentUser}
                 {room?.adminUser === currentUser && (
-                  <span className="ml-1 text-xs bg-blue-500 text-white px-2 py-0.5 rounded-full">Admin</span>
+                  <span className="ml-1 text-xs bg-blue-500 text-white px-2 py-0.5 rounded-full">
+                    Admin
+                  </span>
                 )}
               </span>
             </h2>
@@ -253,7 +281,9 @@ const ChatPage = () => {
               <button
                 onClick={async () => {
                   try {
-                    await httpClient.delete(`/api/v1/rooms/${roomId}?requestedBy=${currentUser}`);
+                    await httpClient.delete(
+                      `/api/v1/rooms/${roomId}?requestedBy=${currentUser}`
+                    );
                     navigate("/");
                   } catch {
                     toast.error("Only admin can delete the room");
@@ -275,16 +305,24 @@ const ChatPage = () => {
 
         {/* Main Content */}
         <div className="flex flex-col md:flex-row gap-6 px-6 py-4 bg-gray-50">
-
           {/* Chat Messages */}
           <div className="w-full md:w-3/4 h-[420px] overflow-y-auto space-y-4 p-4 rounded-lg bg-white shadow-inner">
             {messages.map((message, index) => (
               <div
                 key={index}
-                className={`flex ${message.sender === currentUser ? "justify-end" : "justify-start"}`}
+                className={`flex ${
+                  message.sender === currentUser
+                    ? "justify-end"
+                    : "justify-start"
+                }`}
               >
-                <div className={`relative p-3 rounded-xl max-w-xs md:max-w-md ${message.sender === currentUser ? "bg-green-700" : "bg-gray-800"
-                  }`}>
+                <div
+                  className={`relative p-3 rounded-xl max-w-xs md:max-w-md ${
+                    message.sender === currentUser
+                      ? "bg-green-700"
+                      : "bg-gray-800"
+                  }`}
+                >
                   {room?.adminUser === currentUser && !message.deleted && (
                     <button
                       onClick={() => deleteMessage(message.id)}
@@ -304,19 +342,27 @@ const ChatPage = () => {
                     )}
                     <div>
                       {message.deleted ? (
-                        <p className="text-sm italic text-gray-400">This message was deleted by an admin.</p>
+                        <p className="text-sm italic text-gray-400">
+                          This message was deleted by an admin.
+                        </p>
                       ) : (
                         <>
                           <p className="font-bold text-sm text-white flex items-center gap-1">
                             {message.sender}
                             {room?.adminUser === message.sender && (
-                              <span className="text-xs bg-blue-500 px-1 rounded">Admin</span>
+                              <span className="text-xs bg-blue-500 px-1 rounded">
+                                Admin
+                              </span>
                             )}
                           </p>
-                          <p className="text-white text-sm">{message.content}</p>
+                          <p className="text-white text-sm">
+                            {message.content}
+                          </p>
                         </>
                       )}
-                      <p className="text-xs text-gray-300 mt-1">{timeAgo(message.timeStamp)}</p>
+                      <p className="text-xs text-gray-300 mt-1">
+                        {timeAgo(message.timeStamp)}
+                      </p>
                     </div>
                   </div>
                 </div>
@@ -326,12 +372,20 @@ const ChatPage = () => {
 
           {/* Reserved space for other future sections like online users */}
           <div className="w-full md:w-1/4 p-4 bg-white shadow-inner rounded-lg">
-            <h3 className="text-lg font-semibold mb-4 text-black">Online Users:</h3>
+            <h3 className="text-lg font-semibold mb-4 text-black">
+              Online Users:
+            </h3>
             <ul>
               {onlineUsers.map((user, index) => (
-                <li key={index} className="text-sm text-gray-700">{user}</li>
+                <li key={index} className="text-sm text-gray-700 ">
+                  <span>{user}</span>
+                  {room?.adminUser === user && (
+                    <span className="text-xs text-white bg-blue-500 px-1 rounded">
+                      Admin
+                    </span>
+                  )}
+                </li>
               ))}
-               
             </ul>
           </div>
         </div>
@@ -357,7 +411,6 @@ const ChatPage = () => {
             </button>
           </div>
         </div>
-
       </div>
     </div>
   );
