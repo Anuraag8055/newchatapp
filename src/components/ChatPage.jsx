@@ -34,6 +34,9 @@ const ChatPage = () => {
 
   const [onlineUsers, setOnlineUsers] = useState([]);
 
+  const [showUsernameModal, setShowUsernameModal] = useState(false);
+  const [usernameInput, setUsernameInput] = useState('');
+
   const {roomId}= useParams()
   //const [loading, setLoading] = useState(true);
   // to check roomid exists before joing through url
@@ -49,13 +52,8 @@ const ChatPage = () => {
         let user = sessionStorage.getItem("username");
         console.log(user);
         if (!user) {
-          user = prompt("Enter your username to join the chat:");
-          if (!user || user.trim() === "") {
-            console.log("after entering username"+user);
-            navigate("/");
-            return;
-          }
-          sessionStorage.setItem("username", user);
+          setShowUsernameModal(true);
+          return;
         }
   
         setCurrentUser(user);
@@ -243,8 +241,40 @@ const ChatPage = () => {
       toast.success("Link copied!");
     }
   };
+  const handleJoin=() => {
+    if (!usernameInput.trim()) return;
+    sessionStorage.setItem("username", usernameInput);
+    setCurrentUser(usernameInput);
+    setConnected(true);
+    setShowUsernameModal(false);
+  }
 
   return (
+    <>
+    { showUsernameModal && (
+      <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+        <div className="bg-white p-6 rounded-lg w-full max-w-md">
+          <h2 className="text-xl text-green-600 font-semibold mb-4">Enter your name to join</h2>
+          <input
+            type="text"
+            value={usernameInput}
+            onChange={(e) => setUsernameInput(e.target.value)}
+            placeholder="Your name"
+            className="w-full p-3 text-black border rounded mb-4 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            autoFocus
+            onKeyDown={(e) => e.key === 'Enter' && handleJoin()}
+          />
+          <button
+            onClick={handleJoin}
+            className="w-full py-2 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:opacity-50"
+            disabled={!usernameInput.trim()}
+          >
+            Join Chat
+          </button>
+        </div>
+      </div>
+    )}
+    
     <div className="min-h-screen bg-gray-300 flex items-center justify-center py-8 px-4">
       <div className="w-full max-w-5xl bg-white shadow-md rounded-xl overflow-hidden flex flex-col">
         {/* Header */}
@@ -413,6 +443,7 @@ const ChatPage = () => {
         </div>
       </div>
     </div>
+    </>
   );
   
 };
