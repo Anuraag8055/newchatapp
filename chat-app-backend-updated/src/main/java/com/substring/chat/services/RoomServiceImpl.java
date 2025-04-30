@@ -43,6 +43,7 @@ public class RoomServiceImpl implements RoomService{
 		roomRepository.delete(room);
 	}
 
+	{/* retrieves a detached Message object.  read only view*/}
 	@Override
 	public Optional<Message> findMessageInRoom(String roomId, String messageId) {
 		Room room = findByRoomId(roomId);

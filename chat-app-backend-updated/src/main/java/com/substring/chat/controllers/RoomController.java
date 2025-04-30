@@ -66,9 +66,33 @@ public class RoomController {
     }
     
   //Delete Message(deletes from database)
+//    @DeleteMapping("/{roomId}/messages/{messageId}")
+//    public ResponseEntity<?> deleteMessage(@PathVariable String roomId, @PathVariable String messageId,
+//            @RequestParam String requestedBy) {
+//        Room room = roomService.findByRoomId(roomId);
+//        if (room == null)
+//            return ResponseEntity.notFound().build();
+//
+//        if (!room.getAdminUser().equals(requestedBy)) {
+//            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+//        }
+//
+//        Optional<Message> messageToDelete = roomService.findMessageInRoom(roomId, messageId);
+//        
+//        if (messageToDelete.isPresent()) {
+//            Message msg = messageToDelete.get();
+//          
+//            msg.setDeleted(true);
+//            roomService.save(room);
+//            simpMessagingTemplate.convertAndSend("/topic/room/" + roomId, msg);
+//            return ResponseEntity.ok().build();
+//        }
+//
+//        return ResponseEntity.notFound().build();
+//    }
     @DeleteMapping("/{roomId}/messages/{messageId}")
     public ResponseEntity<?> deleteMessage(@PathVariable String roomId, @PathVariable String messageId,
-            @RequestParam String requestedBy) {
+                                           @RequestParam String requestedBy) {
         Room room = roomService.findByRoomId(roomId);
         if (room == null)
             return ResponseEntity.notFound().build();
@@ -77,16 +101,24 @@ public class RoomController {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         }
 
-        Optional<Message> messageToDelete = roomService.findMessageInRoom(roomId, messageId);
-        if (messageToDelete.isPresent()) {
-            Message msg = messageToDelete.get();
-            msg.setDeleted(true);
-            roomService.save(room);
-            simpMessagingTemplate.convertAndSend("/topic/room/" + roomId, msg);
-            return ResponseEntity.ok().build();
+        List<Message> messages = room.getMessages();
+        Message targetMessage = null;
+
+        for (Message m : messages) {
+            if (m.getId().equals(messageId)) {
+                m.setDeleted(true);
+                targetMessage = m;
+                break;
+            }
         }
 
-        return ResponseEntity.notFound().build();
+        if (targetMessage == null) {
+            return ResponseEntity.notFound().build();
+        }
+
+        roomService.save(room); // This now saves the modified message
+        simpMessagingTemplate.convertAndSend("/topic/room/" + roomId, targetMessage);
+        return ResponseEntity.ok().build();
     }
     
   //get room: join
