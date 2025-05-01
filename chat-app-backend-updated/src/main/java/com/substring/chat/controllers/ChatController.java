@@ -46,7 +46,7 @@ public class ChatController {
     
     //userJoin
     @MessageMapping("/join/{roomId}")
-    public Room joinRoom(
+    public Room handleUserJoin(
             @DestinationVariable String roomId,
             @Payload String username
     ) {

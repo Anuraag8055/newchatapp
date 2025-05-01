@@ -23,6 +23,7 @@ public class Room {
     private String adminUser; // Creator = Admin
     private List<String> connectedUsers = new ArrayList<>();
     private List<Message> messages = new ArrayList<>();
+  //  private List<String>pendingUsers=new ArrayList<>();
 
     public void addUser(String username) {
         if (!connectedUsers.contains(username) ) {

@@ -123,7 +123,7 @@ public class RoomController {
     
   //get room: join
     @GetMapping("/{roomId}")
-    public ResponseEntity<?> joinRoom(@PathVariable String roomId) {
+    public ResponseEntity<?> validateRoom(@PathVariable String roomId) {
         Room room = roomService.findByRoomId(roomId);
         if (room == null) {
             return ResponseEntity.badRequest().body("Room not found!!");
