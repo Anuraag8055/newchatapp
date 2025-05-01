@@ -278,7 +278,7 @@ const ChatPage = () => {
     <div className="min-h-screen bg-gray-300 flex items-center justify-center py-8 px-4">
       <div className="w-full max-w-5xl bg-white shadow-md rounded-xl overflow-hidden flex flex-col">
         {/* Header */}
-        <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 px-6 py-4 border-b border-gray-200 bg-white">
+        <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 px-6 py-4 border-b border-gray-200 bg-teal-50">
           <div className="space-y-1">
             <h1 className="text-lg font-semibold text-gray-800">
               Room: <span className="text-blue-600">{roomId}</span>
@@ -336,7 +336,7 @@ const ChatPage = () => {
         {/* Main Content */}
         <div className="flex flex-col md:flex-row gap-6 px-6 py-4 bg-gray-50">
           {/* Chat Messages */}
-          <div className="w-full md:w-3/4 h-[420px] overflow-y-auto space-y-4 p-4 rounded-lg bg-white shadow-inner">
+          <div className="w-full md:w-3/4 h-[420px] overflow-y-auto space-y-4 p-4 rounded-lg bg-lime-50 shadow-inner">
             {messages.map((message, index) => (
               <div
                 key={index}
@@ -401,7 +401,7 @@ const ChatPage = () => {
           </div>
 
           {/* Reserved space for other future sections like online users */}
-          <div className="w-full md:w-1/4 p-4 bg-white shadow-inner rounded-lg">
+          <div className="w-full md:w-1/4 p-4 bg-teal-50 shadow-inner rounded-lg">
             <h3 className="text-lg font-semibold mb-4 text-black">
               Online Users:
             </h3>
@@ -442,6 +442,7 @@ const ChatPage = () => {
           </div>
         </div>
       </div>
+      
     </div>
     </>
   );
