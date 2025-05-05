@@ -21,9 +21,9 @@ public class Room {
     private String roomId;
     private String roomTopic; // New field
     private String adminUser; // Creator = Admin
-    private List<String> connectedUsers = new ArrayList<>();
     private List<Message> messages = new ArrayList<>();
-  //  private List<String>pendingUsers=new ArrayList<>();
+    private List<String> connectedUsers = new ArrayList<>();
+    private List<String>pendingUsers=new ArrayList<>();
 
     public void addUser(String username) {
         if (!connectedUsers.contains(username) ) {
@@ -34,4 +34,15 @@ public class Room {
     public void removeUser(String username) {
         connectedUsers.remove(username);
     }
+    
+    public void addPendingUser(String username) {
+    	if(!pendingUsers.contains(username) && !connectedUsers.contains(username)) {
+    		pendingUsers.add(username);
+    	}
+    }
+    public void removePendingUser(String username) {
+    		pendingUsers.remove(username);
+    }
+    
+    
 }

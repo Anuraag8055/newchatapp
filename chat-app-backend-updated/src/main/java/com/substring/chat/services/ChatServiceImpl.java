@@ -31,6 +31,8 @@ public class ChatServiceImpl implements ChatService {
 
 	    @Override
 	    public void broadcastRoomUsers(String roomId, List<String> users) {
+	    	Room room=roomService.findByRoomId(roomId);
+	    	  System.out.println("Broadcasting users for room " + roomId + ": " + room.getConnectedUsers());
 	        messagingTemplate.convertAndSend("/topic/roomUsers/" + roomId, users);
 	    }
 }
