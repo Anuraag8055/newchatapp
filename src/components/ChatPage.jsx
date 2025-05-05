@@ -9,6 +9,8 @@ import toast from "react-hot-toast";
 import { baseURL, httpClient } from "../config/AxiosHelper";
 import { getMessagess, getRoomApi } from "../services/RoomService";
 import { timeAgo } from "../config/helper";
+import JoinRequestModal from "./JoinRequestModal";
+import PendingApproval from "./PendingApproval";
 
 
 
@@ -36,8 +38,14 @@ const ChatPage = () => {
 
   const [showUsernameModal, setShowUsernameModal] = useState(false);
   const [usernameInput, setUsernameInput] = useState('');
+   
+  //new states for admin approval reqs
+  const [joinStatus, setJoinStatus] = useState(null); // null, 'pending', 'approved', 'rejected'
+  const [pendingRequests, setPendingRequests] = useState([]);
+  const [showRequestsModal, setShowRequestsModal] = useState(false);
 
-  const {roomId}= useParams()
+
+  const { roomId } = useParams();
   //const [loading, setLoading] = useState(true);
   // to check roomid exists before joing through url
   useEffect(() => {
@@ -109,20 +117,34 @@ const ChatPage = () => {
 
   // WebSocket connection and subscriptions
   useEffect(() => {
-    if (!connected) return;
+
+    //debugger
+    console.log("Connecting as:", currentUser, "Admin:", room?.adminUser === currentUser);
+    if (!roomId || !currentUser) return;
 
     const sock = new SockJS(`${baseURL}/chat`);
-    const client = Stomp.over(sock);
+    const client = Stomp.over(() => sock);
+    client.heartbeat = {
+      outgoing: 10000,  // Client sends ping every 10 seconds
+      incoming: 10000,  // Expect server pong every 10 seconds
+      // If either misses 3 consecutive beats → triggers disconnect
+    };
+    const subscriptions = [];
+    let isMounted = true;
 
     client.connect({}, () => {
+      if (!isMounted) return;
       setStompClient(client);
       toast.success("Connected to chat");
 
+      subscriptions.push(
       // Subscribe to messages
       client.subscribe(`/topic/room/${roomId}`, (message) => {
         const newMessage = JSON.parse(message.body);
         setMessages((prev) => {
-          const existingMessageIndex = prev.findIndex((msg) => msg.id === newMessage.id);
+          const existingMessageIndex = prev.findIndex(
+            (msg) => msg.id === newMessage.id
+          );
 
           if (existingMessageIndex !== -1) {
             // Update the existing message if it's already present in the state
@@ -134,36 +156,61 @@ const ChatPage = () => {
             return [...prev, newMessage];
           }
         });
-      });
+      }),
 
       // Subscribe to updates on online users
       client.subscribe(`/topic/roomUsers/${roomId}`, (message) => {
         setOnlineUsers(JSON.parse(message.body));
-      });
-      
-      client.send(`/app/join/${roomId}`, {}, currentUser);
-      
+      }),
+
+      //client.send(`/app/join/${roomId}`, {}, currentUser);
+
       client.subscribe(`/topic/roomDeleted/${roomId}`, () => {
         toast.error("This room has been deleted by the admin");
-      
+
         handleLogout();
-      
+
         setTimeout(() => {
           window.location.reload(); // Give toast a moment to show
         }, 2000); // wait 2 seconds
-      });
+      }),
 
-      
+      // NEW: Subscribe to join status updates
+      client.subscribe(`/topic/joinStatus/${currentUser}`, (message) => {
+        const { approved } = JSON.parse(message.body);
+        setJoinStatus(approved ? "approved" : "rejected");
+      })
+      );
+      // NEW: Admin-specific subscriptions
+      if (room?.adminUser === currentUser) {
+        subscriptions.push(
+          client.subscribe(
+            `/topic/admin-joinRequests/${currentUser}`, // Matches backend
+            (message) => {
+                console.log("Received join request:", message.body);
+                const request = JSON.parse(message.body);
+                setPendingRequests((prev) => [...prev, request]);
+            })
+      );
 
-      
+        // Admin auto-joins
+        client.send(`/app/join/${roomId}`, {}, currentUser);
+        setJoinStatus("approved");
+      } else {
+        // Regular user sends join request
+        client.send(`/app/requestJoin/${roomId}`, {}, currentUser);
+        setJoinStatus("pending");
+      }
     }); 
 
     return () => {
+      isMounted = false;
+      subscriptions.forEach(sub => sub.unsubscribe());
       if (client && client.connected) {
         client.disconnect();
       }
     };
-  }, [roomId, currentUser, connected]);
+  }, [roomId, currentUser,room?.adminUser]);
   
   useEffect(() => {
     const handleBeforeUnload = () => {
@@ -249,12 +296,14 @@ const ChatPage = () => {
     setShowUsernameModal(false);
   }
 
-  return (
-    <>
-    { showUsernameModal && (
-      <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+  if (showUsernameModal) {
+    return (
+      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+        {/* ... existing username modal ... */}
         <div className="bg-white p-6 rounded-lg w-full max-w-md">
-          <h2 className="text-xl text-green-600 font-semibold mb-4">Enter your name to join</h2>
+          <h2 className="text-xl text-green-600 font-semibold mb-4">
+            Enter your name to join
+          </h2>
           <input
             type="text"
             value={usernameInput}
@@ -262,7 +311,7 @@ const ChatPage = () => {
             placeholder="Your name"
             className="w-full p-3 text-black border rounded mb-4 focus:outline-none focus:ring-2 focus:ring-blue-500"
             autoFocus
-            onKeyDown={(e) => e.key === 'Enter' && handleJoin()}
+            onKeyDown={(e) => e.key === "Enter" && handleJoin()}
           />
           <button
             onClick={handleJoin}
@@ -273,177 +322,216 @@ const ChatPage = () => {
           </button>
         </div>
       </div>
-    )}
-    
-    <div className="min-h-screen bg-gray-300 flex items-center justify-center py-8 px-4">
-      <div className="w-full max-w-5xl bg-white shadow-md rounded-xl overflow-hidden flex flex-col">
-        {/* Header */}
-        <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 px-6 py-4 border-b border-gray-200 bg-teal-50">
-          <div className="space-y-1">
-            <h1 className="text-lg font-semibold text-gray-800">
-              Room: <span className="text-blue-600">{roomId}</span>
-              <span className="ml-2">
-                <button onClick={copyRoomLink} title="Copy room link">
-                  <ClipboardCopy className="w-5 h-5 text-blue-500 hover:text-blue-700" />
-                </button>
-              </span>
-            </h1>
-            <p className="text-sm text-gray-600">
-              Topic:{" "}
-              <span className="text-blue-500">
-                {room?.roomTopic || "General"}
-              </span>
-            </p>
-          </div>
-          <div className="flex items-center gap-3 flex-wrap">
-            <h2 className="text-sm text-gray-700 font-medium">
-              User:{" "}
-              <span className="text-green-600 font-semibold">
-                {currentUser}
-                {room?.adminUser === currentUser && (
-                  <span className="ml-1 text-xs bg-blue-500 text-white px-2 py-0.5 rounded-full">
-                    Admin
-                  </span>
-                )}
-              </span>
-            </h2>
-            {room?.adminUser === currentUser && (
-              <button
-                onClick={async () => {
-                  try {
-                    await httpClient.delete(
-                      `/api/v1/rooms/${roomId}?requestedBy=${currentUser}`
-                    );
-                    navigate("/");
-                  } catch {
-                    toast.error("Only admin can delete the room");
-                  }
-                }}
-                className="bg-red-600 hover:bg-red-700 text-white text-sm px-3 py-1.5 rounded-full"
-              >
-                Delete Room
-              </button>
-            )}
-            <button
-              onClick={handleLogout}
-              className="bg-purple-600 hover:bg-purple-700 text-white text-sm px-3 py-1.5 rounded-full"
-            >
-              Leave Room
-            </button>
-          </div>
-        </header>
+    );
+  }
+  
+  if (joinStatus === 'pending') {
+    return <PendingApproval />;
+  }
+  
+  if (joinStatus === 'rejected') {
+    toast.error('Admin rejected your request');
+    handleLogout();
+    return null;
+  }
 
-        {/* Main Content */}
-        <div className="flex flex-col md:flex-row gap-6 px-6 py-4 bg-gray-50">
-          {/* Chat Messages */}
-          <div className="w-full md:w-3/4 h-[420px] overflow-y-auto space-y-4 p-4 rounded-lg bg-lime-50 shadow-inner">
-            {messages.map((message, index) => (
-              <div
-                key={index}
-                className={`flex ${
-                  message.sender === currentUser
-                    ? "justify-end"
-                    : "justify-start"
-                }`}
-              >
-                <div
-                  className={`relative p-3 rounded-xl max-w-xs md:max-w-md ${
-                    message.sender === currentUser
-                      ? "bg-green-700"
-                      : "bg-gray-800"
-                  }`}
-                >
-                  {room?.adminUser === currentUser && !message.deleted && (
-                    <button
-                      onClick={() => deleteMessage(message.id)}
-                      className="absolute -top-2 -right-2 bg-red-500 hover:bg-red-700 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs"
-                      title="Delete message"
-                    >
-                      ×
-                    </button>
-                  )}
-                  <div className="flex gap-3">
-                    {!message.deleted && (
-                      <img
-                        className="h-8 w-8 rounded-full"
-                        src={`https://avatar.iran.liara.run/public/?username=${message.sender}`}
-                        alt={message.sender}
-                      />
-                    )}
-                    <div>
-                      {message.deleted ? (
-                        <p className="text-sm italic text-gray-400">
-                          This message was deleted by an admin.
-                        </p>
-                      ) : (
-                        <>
-                          <p className="font-bold text-sm text-white flex items-center gap-1">
-                            {message.sender}
-                            {room?.adminUser === message.sender && (
-                              <span className="text-xs bg-blue-500 px-1 rounded">
-                                Admin
-                              </span>
-                            )}
-                          </p>
-                          <p className="text-white text-sm">
-                            {message.content}
-                          </p>
-                        </>
-                      )}
-                      <p className="text-xs text-gray-300 mt-1">
-                        {timeAgo(message.timeStamp)}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          {/* Reserved space for other future sections like online users */}
-          <div className="w-full md:w-1/4 p-4 bg-teal-50 shadow-inner rounded-lg">
-            <h3 className="text-lg font-semibold mb-4 text-black">
-              Online Users:
-            </h3>
-            <ul>
-              {onlineUsers.map((user, index) => (
-                <li key={index} className="text-sm text-gray-700 ">
-                  <span>{user}</span>
-                  {room?.adminUser === user && (
-                    <span className="text-xs text-white bg-blue-500 px-1 rounded">
+  return (
+    <>
+      {room?.adminUser === currentUser && showRequestsModal && (
+        <JoinRequestModal
+          requests={pendingRequests}
+          onDecision={(request, approved) => {
+            stompClient.send(
+              `/app/handleRequest/${roomId}`,
+              {},
+              JSON.stringify({
+                username: request.username,
+                approved: approved,
+              })
+            );
+            setPendingRequests((prev) =>
+              prev.filter((r) => r.username !== request.username)
+            );
+          }}
+          onClose={() => setShowRequestsModal(false)}
+        />
+      )}
+      <div className="min-h-screen bg-gray-300 flex items-center justify-center py-8 px-4">
+        <div className="w-full max-w-5xl bg-white shadow-md rounded-xl overflow-hidden flex flex-col">
+          {/* Header */}
+          <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 px-6 py-4 border-b border-gray-200 bg-teal-50">
+            <div className="space-y-1">
+              <h1 className="text-lg font-semibold text-gray-800">
+                Room: <span className="text-blue-600">{roomId}</span>
+                <span className="ml-2">
+                  <button onClick={copyRoomLink} title="Copy room link">
+                    <ClipboardCopy className="w-5 h-5 text-blue-500 hover:text-blue-700" />
+                  </button>
+                </span>
+              </h1>
+              <p className="text-sm text-gray-600">
+                Topic:{" "}
+                <span className="text-blue-500">
+                  {room?.roomTopic || "General"}
+                </span>
+              </p>
+            </div>
+            <div className="flex items-center gap-3 flex-wrap">
+              <h2 className="text-sm text-gray-700 font-medium">
+                User:{" "}
+                <span className="text-green-600 font-semibold">
+                  {currentUser}
+                  {room?.adminUser === currentUser && (
+                    <span className="ml-1 text-xs bg-blue-500 text-white px-2 py-0.5 rounded-full">
                       Admin
                     </span>
                   )}
-                </li>
-              ))}
-            </ul>
-          </div>
-        </div>
+                </span>
+              </h2>
+              {room?.adminUser === currentUser && (
+                <>
+                <button
+                  onClick={async () => {
+                    try {
+                      await httpClient.delete(
+                        `/api/v1/rooms/${roomId}?requestedBy=${currentUser}`
+                      );
+                      navigate("/");
+                    } catch {
+                      toast.error("Only admin can delete the room");
+                    }
+                  }}
+                  className="bg-red-600 hover:bg-red-700 text-white text-sm px-3 py-1.5 rounded-full"
+                >
+                  Delete Room
+                </button>
+                <button
+                onClick={() => setShowRequestsModal(true)}
+                className="bg-yellow-500 hover:bg-yellow-600 text-white px-3 py-1 rounded-full"
+              >
+                {pendingRequests.length} Requests
+              </button>
+              </> 
+              )}
+              <button
+                onClick={handleLogout}
+                className="bg-purple-600 hover:bg-purple-700 text-white text-sm px-3 py-1.5 rounded-full"
+              >
+                Leave Room
+              </button>
+            </div>
+          </header>
 
-        {/* Message Input */}
-        <div className="w-full px-6 py-4 border-t border-gray-200 bg-white">
-          <div className="flex items-center gap-2 bg-gray-800 rounded-full px-4 py-2">
-            <input
-              ref={inputRef}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && sendMessage()}
-              type="text"
-              placeholder="Type your message..."
-              className="flex-1 bg-transparent focus:outline-none text-sm px-2 py-1 text-white-700"
-            />
-            <button
-              onClick={sendMessage}
-              disabled={!input.trim()}
-              className="bg-green-600 hover:bg-green-700 text-white p-2 rounded-full disabled:opacity-50"
-            >
-              <MdSend size={20} />
-            </button>
+          {/* Main Content */}
+          <div className="flex flex-col md:flex-row gap-6 px-6 py-4 bg-gray-50">
+            {/* Chat Messages */}
+            <div className="w-full md:w-3/4 h-[420px] overflow-y-auto space-y-4 p-4 rounded-lg bg-lime-50 shadow-inner">
+              {messages.map((message, index) => (
+                <div
+                  key={index}
+                  className={`flex ${
+                    message.sender === currentUser
+                      ? "justify-end"
+                      : "justify-start"
+                  }`}
+                >
+                  <div
+                    className={`relative p-3 rounded-xl max-w-xs md:max-w-md ${
+                      message.sender === currentUser
+                        ? "bg-green-700"
+                        : "bg-gray-800"
+                    }`}
+                  >
+                    {room?.adminUser === currentUser && !message.deleted && (
+                      <button
+                        onClick={() => deleteMessage(message.id)}
+                        className="absolute -top-2 -right-2 bg-red-500 hover:bg-red-700 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs"
+                        title="Delete message"
+                      >
+                        ×
+                      </button>
+                    )}
+                    <div className="flex gap-3">
+                      {!message.deleted && (
+                        <img
+                          className="h-8 w-8 rounded-full"
+                          src={`https://avatar.iran.liara.run/public/?username=${message.sender}`}
+                          alt={message.sender}
+                        />
+                      )}
+                      <div>
+                        {message.deleted ? (
+                          <p className="text-sm italic text-gray-400">
+                            This message was deleted by an admin.
+                          </p>
+                        ) : (
+                          <>
+                            <p className="font-bold text-sm text-white flex items-center gap-1">
+                              {message.sender}
+                              {room?.adminUser === message.sender && (
+                                <span className="text-xs bg-blue-500 px-1 rounded">
+                                  Admin
+                                </span>
+                              )}
+                            </p>
+                            <p className="text-white text-sm">
+                              {message.content}
+                            </p>
+                          </>
+                        )}
+                        <p className="text-xs text-gray-300 mt-1">
+                          {timeAgo(message.timeStamp)}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Reserved space for other future sections like online users */}
+            <div className="w-full md:w-1/4 p-4 bg-teal-50 shadow-inner rounded-lg">
+              <h3 className="text-lg font-semibold mb-4 text-black">
+                Online Users:
+              </h3>
+              <ul>
+                {onlineUsers.map((user, index) => (
+                  <li key={index} className="text-sm text-gray-700 ">
+                    <span>{user}</span>
+                    {room?.adminUser === user && (
+                      <span className="text-xs text-white bg-blue-500 px-1 rounded">
+                        Admin
+                      </span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+
+          {/* Message Input */}
+          <div className="w-full px-6 py-4 border-t border-gray-200 bg-white">
+            <div className="flex items-center gap-2 bg-gray-800 rounded-full px-4 py-2">
+              <input
+                ref={inputRef}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && sendMessage()}
+                type="text"
+                placeholder="Type your message..."
+                className="flex-1 bg-transparent focus:outline-none text-sm px-2 py-1 text-white-700"
+              />
+              <button
+                onClick={sendMessage}
+                disabled={!input.trim()}
+                className="bg-green-600 hover:bg-green-700 text-white p-2 rounded-full disabled:opacity-50"
+              >
+                <MdSend size={20} />
+              </button>
+            </div>
           </div>
         </div>
       </div>
-      
-    </div>
     </>
   );
   

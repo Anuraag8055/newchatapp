@@ -54,7 +54,7 @@ const JoinCreateChat = () => {
     if (!validateForm()) return;
     try {
       const response = await createRoomApi({
-        roomId: detail.roomId,
+        //roomId: detail.roomId,
         roomTopic: detail.roomTopic,
         adminUser: detail.userName,
       });
@@ -63,7 +63,9 @@ const JoinCreateChat = () => {
       setRoomId(response.roomId);
       setConnected(true);
       sessionStorage.setItem("username", detail.userName);
-      navigate(`/chat/${response.roomId}`);
+      navigate(`/chat/${response.roomId}`, {
+        state: { isAdmin: true } // Flag for immediate access
+      });
     } catch (error) {
       if (error.response?.status === 400) {
         toast.error("Room already exists!");
