@@ -35,7 +35,7 @@ const JoinCreateChat = () => {
     if (!validateForm()) return;
     try {
       const room = await validateRoomApi(detail.roomId);
-      toast.success("Joined Room");
+      //toast.success("Joined Room");
       setCurrentUser(detail.userName);
       setRoomId(room.roomId);
       setConnected(true);

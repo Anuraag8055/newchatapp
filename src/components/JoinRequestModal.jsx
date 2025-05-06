@@ -7,7 +7,7 @@ export default function JoinRequestModal({ requests, onDecision, onClose }) {
             <p className="text-gray-500">No pending requests</p>
           ) : (
             requests.map((req) => (
-              <div key={req.username} className="flex justify-between items-center mb-3">
+              <div key={req.username} className="flex justify-between items-center mb-3 rounded-md">
                 <span className="text-xl text-black font-semibold mb-4">{req.username}</span>
                 <div className="flex gap-2">
                   <button

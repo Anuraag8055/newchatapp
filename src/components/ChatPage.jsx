@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
-import { MdSend } from "react-icons/md";
+import { MdSend,MdDeleteOutline} from "react-icons/md";
+import { BsThreeDotsVertical } from "react-icons/bs";
 import { ClipboardCopy } from 'lucide-react';
 import useChatContext from "../context/ChatContext";
 import { useNavigate, useParams } from "react-router";
@@ -11,6 +12,7 @@ import { getMessagess, getRoomApi } from "../services/RoomService";
 import { timeAgo } from "../config/helper";
 import JoinRequestModal from "./JoinRequestModal";
 import PendingApproval from "./PendingApproval";
+import SetModeratorModal from "./setModeratorModal";
 
 
 
@@ -43,6 +45,12 @@ const ChatPage = () => {
   const [joinStatus, setJoinStatus] = useState(null); // null, 'pending', 'approved', 'rejected'
   const [pendingRequests, setPendingRequests] = useState([]);
   const [showRequestsModal, setShowRequestsModal] = useState(false);
+
+  //moderator
+  const [moderatorModal, setModeratorModal] = useState({
+    show: false,
+    username: null
+  });
 
 
   const { roomId } = useParams();
@@ -135,7 +143,7 @@ const ChatPage = () => {
     client.connect({}, () => {
       if (!isMounted) return;
       setStompClient(client);
-      toast.success("Connected to chat");
+     // toast.success("Connected to chat");
 
       subscriptions.push(
       // Subscribe to messages
@@ -161,6 +169,22 @@ const ChatPage = () => {
       // Subscribe to updates on online users
       client.subscribe(`/topic/roomUsers/${roomId}`, (message) => {
         setOnlineUsers(JSON.parse(message.body));
+      }),
+
+      //Subscribe to updates on Moderators
+      client.subscribe(`/topic/roomModerators/${roomId}`, (message) => {
+        try {
+          const roomData = JSON.parse(message.body);
+          setRoom(prev => ({
+              ...prev,
+              moderators: roomData.moderators || [],
+              // Preserve other room properties
+              adminUser: prev.adminUser,
+              connectedUsers: prev.connectedUsers
+          }));
+      } catch (error) {
+          console.error("Error parsing moderator update:", error);
+      }
       }),
 
       //client.send(`/app/join/${roomId}`, {}, currentUser);
@@ -225,6 +249,13 @@ const ChatPage = () => {
       window.removeEventListener('beforeunload', handleBeforeUnload);
     };
   }, [stompClient, roomId, currentUser]);
+
+  useEffect(() => {
+    if (joinStatus === "approved") {
+      toast.success("Joined Room");
+      toast.success("Connected to chat");
+    }
+  }, [joinStatus]);
 
   const sendMessage = () => {
     if (input.trim() && stompClient && connected) {
@@ -295,6 +326,15 @@ const ChatPage = () => {
     setConnected(true);
     setShowUsernameModal(false);
   }
+
+  const handleSetModerator = (username) => {
+    httpClient.put(`/api/v1/rooms/${roomId}/moderators?username=${username}&requestedBy=${currentUser}`)
+      .then(() => {
+        toast.success(`${username} is now a moderator`);
+        setModeratorModal({ show: false, username: null });
+      })
+      .catch(() => toast.error("Failed to set moderator"));
+};
 
   if (showUsernameModal) {
     return (
@@ -390,28 +430,28 @@ const ChatPage = () => {
               </h2>
               {room?.adminUser === currentUser && (
                 <>
-                <button
-                  onClick={async () => {
-                    try {
-                      await httpClient.delete(
-                        `/api/v1/rooms/${roomId}?requestedBy=${currentUser}`
-                      );
-                      navigate("/");
-                    } catch {
-                      toast.error("Only admin can delete the room");
-                    }
-                  }}
-                  className="bg-red-600 hover:bg-red-700 text-white text-sm px-3 py-1.5 rounded-full"
-                >
-                  Delete Room
-                </button>
-                <button
-                onClick={() => setShowRequestsModal(true)}
-                className="bg-yellow-500 hover:bg-yellow-600 text-white px-3 py-1 rounded-full"
-              >
-                {pendingRequests.length} Requests
-              </button>
-              </> 
+                  <button
+                    onClick={async () => {
+                      try {
+                        await httpClient.delete(
+                          `/api/v1/rooms/${roomId}?requestedBy=${currentUser}`
+                        );
+                        navigate("/");
+                      } catch {
+                        toast.error("Only admin can delete the room");
+                      }
+                    }}
+                    className="bg-red-600 hover:bg-red-700 text-white text-sm px-3 py-1.5 rounded-full"
+                  >
+                    Delete Room
+                  </button>
+                  <button
+                    onClick={() => setShowRequestsModal(true)}
+                    className="bg-yellow-500 hover:bg-yellow-600 text-white px-3 py-1 rounded-full"
+                  >
+                    {pendingRequests.length} Requests
+                  </button>
+                </>
               )}
               <button
                 onClick={handleLogout}
@@ -442,13 +482,13 @@ const ChatPage = () => {
                         : "bg-gray-800"
                     }`}
                   >
-                    {room?.adminUser === currentUser && !message.deleted && (
+                    {(room?.adminUser === currentUser || room?.moderators?.includes(currentUser)) && !message.deleted && (
                       <button
                         onClick={() => deleteMessage(message.id)}
                         className="absolute -top-2 -right-2 bg-red-500 hover:bg-red-700 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs"
                         title="Delete message"
                       >
-                        ×
+                        <MdDeleteOutline />
                       </button>
                     )}
                     <div className="flex gap-3">
@@ -496,16 +536,45 @@ const ChatPage = () => {
               </h3>
               <ul>
                 {onlineUsers.map((user, index) => (
-                  <li key={index} className="text-sm text-gray-700 ">
+                  <li
+                    key={index}
+                    className="text-sm text-gray-700 flex items-center gap-1"
+                  >
                     <span>{user}</span>
                     {room?.adminUser === user && (
                       <span className="text-xs text-white bg-blue-500 px-1 rounded">
                         Admin
                       </span>
                     )}
+                    {room?.moderators?.includes(user)  && (
+                      <span className="text-xs text-white bg-emerald-500 px-1 rounded">
+                        Moderator
+                      </span>
+                    )}
+                    {room?.adminUser === currentUser &&
+                      room?.adminUser !== user && (
+                        <button
+                          onClick={() =>
+                            setModeratorModal({ show: true, username: user })
+                          }
+                          className="text-xs text-gray-500 hover:text-red-700"
+                          title="Set as moderator"
+                        >
+                          <BsThreeDotsVertical size={12}/>
+                        </button>
+                      )}
                   </li>
                 ))}
               </ul>
+              {moderatorModal.show && (
+                <SetModeratorModal
+                  username={moderatorModal.username}
+                  onClose={() =>
+                    setModeratorModal({ show: false, username: null })
+                  }
+                  onConfirm={() => handleSetModerator(moderatorModal.username)}
+                />
+              )}
             </div>
           </div>
 
