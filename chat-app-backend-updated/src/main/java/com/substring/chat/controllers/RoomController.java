@@ -15,6 +15,7 @@ import org.springframework.stereotype.Repository;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -65,7 +66,7 @@ public class RoomController {
         return ResponseEntity.ok("Room deleted!");
     }
     
-  //Delete Message(deletes from database)
+  //Delete Message(only changes copy of message of room)
 //    @DeleteMapping("/{roomId}/messages/{messageId}")
 //    public ResponseEntity<?> deleteMessage(@PathVariable String roomId, @PathVariable String messageId,
 //            @RequestParam String requestedBy) {
@@ -97,7 +98,7 @@ public class RoomController {
         if (room == null)
             return ResponseEntity.notFound().build();
 
-        if (!room.getAdminUser().equals(requestedBy)) {
+        if (!room.getAdminUser().equals(requestedBy) && !room.getModerators().contains(requestedBy)) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         }
 
@@ -119,6 +120,7 @@ public class RoomController {
         roomService.save(room); // This now saves the modified message
         simpMessagingTemplate.convertAndSend("/topic/room/" + roomId, targetMessage);
         return ResponseEntity.ok().build();
+        
     }
     
   //get room: join
@@ -141,6 +143,43 @@ public class RoomController {
         List<Message> messages = roomService.getMessagesPaginated(roomId, page, size);
         return ResponseEntity.ok(messages);
     }
-
+    
+    
+    @PutMapping("/{roomId}/moderators")
+    public ResponseEntity<?> setModerator(@PathVariable String roomId, @RequestParam String username,
+    						@RequestParam String requestedBy) {
+    	
+    	Room room=roomService.findByRoomId(roomId);
+    	if(room==null) {
+    		return ResponseEntity.notFound().build();
+    	}
+    	if(!room.getAdminUser().equals(requestedBy)) {
+    		return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+    	}
+    	room.addModearator(username);;
+    	roomService.save(room);
+    	simpMessagingTemplate.convertAndSend(
+    		    "/topic/roomModerators/" + roomId,room
+    		);
+    	return ResponseEntity.ok().build();
+    }
+    
+    @DeleteMapping("/{roomId}/moderators")
+    public ResponseEntity<?> removeModerator(@PathVariable String roomId, @RequestParam String username,
+			@RequestParam String requestedBy) {
+    	Room room=roomService.findByRoomId(roomId);
+    	if(room==null) {
+    		return ResponseEntity.notFound().build();
+    	}
+    	if(!room.getAdminUser().equals(requestedBy)) {
+    		return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+    	}
+    	room.removeModerator(username);;
+    	roomService.save(room);
+    	simpMessagingTemplate.convertAndSend(
+    		    "/topic/roomModerators/" + roomId,room
+    		);
+    	return ResponseEntity.ok().build();
+    }
 
 }

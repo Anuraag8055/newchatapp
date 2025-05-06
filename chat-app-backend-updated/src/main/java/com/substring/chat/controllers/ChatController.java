@@ -119,7 +119,8 @@ public class ChatController {
         room.removePendingUser(username);
         roomService.save(room);
     }
-   
+    
+    
     
     //userLeave
     @MessageMapping("/leave/{roomId}")
